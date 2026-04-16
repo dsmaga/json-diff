@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JSON Diff</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="navbar-left">
+      <span class="logo">JSON <strong>Diff</strong></span>
+    </div>
+    <div class="navbar-right">
+      <label class="width-control">
+        <span class="width-label">szerokość kolumny</span>
+        <input type="range" id="width-slider" min="20" max="100" step="5" value="50" />
+        <span id="width-out">50%</span>
+      </label>
+      <button id="btn-add"     class="btn btn-secondary">+ Dodaj JSON</button>
+      <button id="btn-compare" class="btn btn-secondary">Porównaj</button>
+      <button id="btn-save"    class="btn btn-primary">Zapisz i udostępnij</button>
+    </div>
+  </nav>
+
+  <div class="scroll-x">
+    <div id="editors-grid" class="editors-grid"></div>
+  </div>
+
+  <div id="diff-section" class="diff-section hidden">
+    <div class="diff-toolbar">
+      <span id="diff-stats" class="diff-stats"></span>
+      <label class="check-wrap">
+        <input type="checkbox" id="chk-only-diff" />
+        <span>tylko różnice</span>
+      </label>
+      <button id="btn-close-diff" class="btn btn-secondary btn-sm">✕ zamknij diff</button>
+    </div>
+    <div class="scroll-x">
+      <div id="diff-columns" class="diff-columns"></div>
+    </div>
+    <div class="diff-legend">
+      <span class="legend-item"><span class="dot dot-chg"></span>różni się w co najmniej jednym panelu</span>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/brace-fold.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/lint.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/json-lint.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
