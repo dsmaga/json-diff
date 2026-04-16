@@ -355,6 +355,28 @@ function showToast(msg) {
   toastTimer = setTimeout(() => el.classList.add('hidden'), 3500);
 }
 
+// ─── Helpers: auto width + show diff ─────────────────────────────────────────
+function autoColWidth() {
+  return Math.max(20, Math.floor(100 / Math.max(1, panels.length)));
+}
+
+function syncWidthControl() {
+  const pct    = autoColWidth();
+  colWidthPct  = pct;
+  const slider   = document.getElementById('width-slider');
+  const widthOut = document.getElementById('width-out');
+  slider.value         = pct;
+  widthOut.textContent = pct + '%';
+  applyWidth(pct);
+}
+
+function showDiff() {
+  document.getElementById('diff-section').classList.remove('hidden');
+  diffVisible = true;
+  renderDiff();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
 async function main() {
   supabase = await initSupabase();
   const vid = new URLSearchParams(location.search).get('v');
@@ -365,15 +387,17 @@ async function main() {
     createPanel('', 'JSON B');
   }
 
+  // Auto-fit column width to number of panels, then show diff immediately
+  syncWidthControl();
+  showDiff();
+
   document.getElementById('btn-add').addEventListener('click', () => {
     const l = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     createPanel('', 'JSON ' + (l[panels.length] || panels.length + 1));
+    syncWidthControl();
+    if (diffVisible) renderDiff();
   });
-  document.getElementById('btn-compare').addEventListener('click', () => {
-    document.getElementById('diff-section').classList.remove('hidden');
-    diffVisible = true;
-    renderDiff();
-  });
+  document.getElementById('btn-compare').addEventListener('click', showDiff);
   document.getElementById('btn-close-diff').addEventListener('click', () => {
     document.getElementById('diff-section').classList.add('hidden');
     diffVisible = false;
