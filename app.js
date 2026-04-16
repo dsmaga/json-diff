@@ -1,6 +1,12 @@
 /**
  * JSON Diff — app.js
- * CodeMirror 5 + N-way diff
+ * CodeMirror 5 + N-way diff przez material path
+ *
+ * prettyLines: JSON.stringify(val, null, 2) → linie,
+ *   dla każdej linii wyciągamy klucz regexem i odtwarzamy pełną ścieżkę
+ *   przez stack który śledzimy razem z wcięciami (nie z tokenami).
+ *
+ * isHighlighted: tylko dokładne trafienie w diffSet (bez kolorowania przodków).
  */
 
 const SUPABASE_URL = 'https://hmvqwtvsuuloexpujfwc.supabase.co';
@@ -42,6 +48,9 @@ function createPanel(initialContent, initialName) {
   const ta        = card.querySelector('.editor-ta');
   nameEl.value = initialName;
 
+  // Musi być w DOM przed inicjalizacją CodeMirror
+  document.getElementById('editors-grid').appendChild(card);
+
   const cm = CodeMirror.fromTextArea(ta, {
     mode: { name: 'javascript', json: true },
     theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'material' : 'default',
@@ -55,6 +64,7 @@ function createPanel(initialContent, initialName) {
   });
   cm.setSize('100%', '260px');
   cm.setValue(initialContent);
+  cm.refresh();
   cm.on('change', () => { validateCm(cm, statusEl); if (diffVisible) renderDiff(); });
   nameEl.addEventListener('input', () => { if (diffVisible) renderDiff(); });
   validateCm(cm, statusEl);
@@ -66,7 +76,6 @@ function createPanel(initialContent, initialName) {
     if (diffVisible) renderDiff();
   });
 
-  document.getElementById('editors-grid').appendChild(card);
   panels.push({ id, nameEl, cm });
 }
 
