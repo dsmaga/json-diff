@@ -8,8 +8,8 @@
  * Highlighting: exact match in diffSet only (no ancestor coloring).
  */
 
-const SUPABASE_URL = '__SUPABASE_URL__';
-const SUPABASE_KEY = '__SUPABASE_ANON_KEY__';
+const SUPABASE_URL = 'https://hmvqwtvsuuloexpujfwc.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtdnF3dHZzdXVsb2V4cHVqZndjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNTc5MDgsImV4cCI6MjA5MTkzMzkwOH0.iItHJY7R5d2s5Ule4pRwmLJtFpyPP_lLcd5-_PDcdWA';
 
 const panels    = [];
 let supabase    = null;
