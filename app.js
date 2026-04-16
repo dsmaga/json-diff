@@ -1,16 +1,15 @@
 /**
  * JSON Diff — app.js
- * CodeMirror 5 + N-way diff przez material path
+ * CodeMirror 5 + N-way deep diff via material paths
  *
- * prettyLines: JSON.stringify(val, null, 2) → linie,
- *   dla każdej linii wyciągamy klucz regexem i odtwarzamy pełną ścieżkę
- *   przez stack który śledzimy razem z wcięciami (nie z tokenami).
+ * prettyLines: JSON.stringify(val, null, 2) → lines,
+ *   each line gets a material path reconstructed via an indent-based stack.
  *
- * isHighlighted: tylko dokładne trafienie w diffSet (bez kolorowania przodków).
+ * Highlighting: exact match in diffSet only (no ancestor coloring).
  */
 
-const SUPABASE_URL = 'https://hmvqwtvsuuloexpujfwc.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtdnF3dHZzdXVsb2V4cHVqZndjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNTc5MDgsImV4cCI6MjA5MTkzMzkwOH0.iItHJY7R5d2s5Ule4pRwmLJtFpyPP_lLcd5-_PDcdWA';
+const SUPABASE_URL = '__SUPABASE_URL__';
+const SUPABASE_KEY = '__SUPABASE_ANON_KEY__';
 
 const panels    = [];
 let supabase    = null;
@@ -23,7 +22,7 @@ async function initSupabase() {
   return createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// ─── Panel ────────────────────────────────────────────────────────────────────
+// ─── Panel ─────────────────────────────────────────────────────────────────────
 function createPanel(initialContent, initialName) {
   initialContent = initialContent || '{\n  \n}';
   initialName    = initialName    || '';
@@ -48,7 +47,7 @@ function createPanel(initialContent, initialName) {
   const ta        = card.querySelector('.editor-ta');
   nameEl.value = initialName;
 
-  // Musi być w DOM przed inicjalizacją CodeMirror
+  // Must be in DOM before CodeMirror init
   document.getElementById('editors-grid').appendChild(card);
 
   const cm = CodeMirror.fromTextArea(ta, {
@@ -91,7 +90,7 @@ function validateCm(cm, statusEl) {
   }
 }
 
-// ─── flatten: val → Map<materialPath, serializedLeaf> ────────────────────────
+// ─── flatten: val → Map<materialPath, serializedLeaf> ──────────────────────────
 function flatten(val, prefix) {
   if (prefix === undefined) prefix = '';
   const out = new Map();
@@ -116,7 +115,7 @@ function flatten(val, prefix) {
   return out;
 }
 
-// ─── nwayDiff: N map → Set<path> które się różnią ────────────────────────────
+// ─── nwayDiff: N maps → Set<path> of paths that differ ─────────────────────────
 function nwayDiff(maps) {
   const allPaths = new Set();
   maps.forEach(m => m.forEach((_, k) => allPaths.add(k)));
@@ -128,20 +127,20 @@ function nwayDiff(maps) {
   return diffSet;
 }
 
-// ─── prettyLines: val → [{ text, path }] ─────────────────────────────────────
-// Używamy JSON.stringify żeby linie były identyczne jak to co użytkownik widzi.
-// Ścieżkę odtwarzamy przez śledzenie stosu (path, indent, arrayIndex).
+// ─── prettyLines: val → [{ text, path }] ───────────────────────────────────────
+// Use JSON.stringify so lines match exactly what the user sees.
+// Reconstruct path by tracking a stack (path, indent, arrayIndex).
 // Stack entry: { path, type: 'obj'|'arr', idx: number }
 function prettyLines(val) {
   const raw   = JSON.stringify(val, null, 2);
   const lines = raw.split('\n');
 
-  // stack[top] = bieżący kontener
+  // stack[top] = current container
   const stack = [];
-  // Wynik
+  // Result
   const result = [];
 
-  // Pomocnik: bieżąca ścieżka bazy (kontener)
+  // Helper: current base path (container)
   function parentPath() {
     return stack.length ? stack[stack.length - 1].path : '';
   }
@@ -149,23 +148,23 @@ function prettyLines(val) {
   lines.forEach(line => {
     const trimmed  = line.trim();
     const indent   = line.match(/^(\s*)/)[1].length;
-    const indentU  = indent / 2; // poziom wcięcia w jednostkach
+    const indentU  = indent / 2; // indent level in units
 
-    // ── Zamknięcia ── zamykamy kontener jeśli wcięcie pasuje
-    // Zamknięcie: linia zaczyna się od } lub ]
+    // ── Closing bracket ──
+    // Line starts with } or ]
     if (/^[}\]]/.test(trimmed)) {
-      // ścieżka zamknięcia = ścieżka kontenera
+      // closing line path = container path
       const top = stack.length ? stack[stack.length - 1] : null;
       result.push({ text: line, path: top ? top.path : '' });
       stack.pop();
-      // Jeśli rodzic jest tablicą — inkrementuj idx
+      // If parent is array — increment idx
       if (stack.length && stack[stack.length - 1].type === 'arr') {
         stack[stack.length - 1].idx++;
       }
       return;
     }
 
-    // ── Klucz: "key": value lub "key": { lub "key": [
+    // ── Key: "key": value or "key": { or "key": [
     const keyMatch = trimmed.match(/^"((?:[^"\\]|\\.)*)"\s*:/);
     if (keyMatch) {
       const key      = keyMatch[1];
@@ -181,13 +180,13 @@ function prettyLines(val) {
         result.push({ text: line, path: fullPath });
         stack.push({ path: fullPath, type: 'arr', idx: 0 });
       } else {
-        // liść — ścieżka to fullPath
+        // leaf — path is fullPath
         result.push({ text: line, path: fullPath });
       }
       return;
     }
 
-    // ── Element tablicy (bez klucza)
+    // ── Array element (no key)
     if (stack.length && stack[stack.length - 1].type === 'arr') {
       const top      = stack[stack.length - 1];
       const fullPath = `${top.path}[${top.idx}]`;
@@ -206,7 +205,7 @@ function prettyLines(val) {
       return;
     }
 
-    // ── Otwarcie root { lub [
+    // ── Root opening { or [
     if (trimmed === '{') {
       result.push({ text: line, path: '' });
       stack.push({ path: '', type: 'obj', idx: 0 });
@@ -225,7 +224,7 @@ function prettyLines(val) {
   return result;
 }
 
-// ─── Render diff ──────────────────────────────────────────────────────────────
+// ─── Render diff ───────────────────────────────────────────────────────────────
 function renderDiff() {
   const container = document.getElementById('diff-columns');
   container.innerHTML = '';
@@ -267,8 +266,8 @@ function renderDiff() {
     } else {
       const pLines = prettyLines(p);
       pLines.forEach(({ text, path }, li) => {
-        // Linia diff: TYLKO jeśli path jest bezpośrednio w diffSet
-        // (liść który się różni) — bez kolorowania kontenerów/przodków
+        // Highlight only if path is directly in diffSet
+        // (differing leaf) — no ancestor/container highlighting
         const diff = diffSet.has(path);
         if (onlyDiff && !diff) return;
 
