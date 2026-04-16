@@ -1,26 +1,23 @@
 /**
  * JSON Diff — app.js
- * CodeMirror 5 (UMD) + deep N-way diff
+ * CodeMirror 5 + N-way diff
  */
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-const SUPABASE_URL = '__SUPABASE_URL__';
-const SUPABASE_KEY = '__SUPABASE_ANON_KEY__';
+const SUPABASE_URL = 'https://hmvqwtvsuuloexpujfwc.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtdnF3dHZzdXVsb2V4cHVqZndjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNTc5MDgsImV4cCI6MjA5MTkzMzkwOH0.iItHJY7R5d2s5Ule4pRwmLJtFpyPP_lLcd5-_PDcdWA';
 
-// ─── State ────────────────────────────────────────────────────────────────────
-const panels = [];
-let supabase     = null;
-let diffVisible  = false;
-let colWidthPct  = 50;
+const panels    = [];
+let supabase    = null;
+let diffVisible = false;
+let colWidthPct = 50;
 
-// ─── Supabase ─────────────────────────────────────────────────────────────────
 async function initSupabase() {
   if (SUPABASE_URL === '__SUPABASE_URL__') return null;
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
   return createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// ─── Editor panel ─────────────────────────────────────────────────────────────
+// ─── Panel ────────────────────────────────────────────────────────────────────
 function createPanel(initialContent, initialName) {
   initialContent = initialContent || '{\n  \n}';
   initialName    = initialName    || '';
@@ -31,7 +28,6 @@ function createPanel(initialContent, initialName) {
   card.dataset.id = id;
   card.style.flex     = '0 0 ' + colWidthPct + '%';
   card.style.minWidth = '280px';
-
   card.innerHTML =
     '<div class="editor-card-header">' +
       '<input class="editor-name" type="text" placeholder="Nazwa JSON-a…" />' +
@@ -40,11 +36,10 @@ function createPanel(initialContent, initialName) {
     '</div>' +
     '<textarea class="editor-ta"></textarea>';
 
-  const nameEl   = card.querySelector('.editor-name');
-  const statusEl = card.querySelector('.editor-status');
-  const removeBtn= card.querySelector('.btn-remove');
-  const ta       = card.querySelector('.editor-ta');
-
+  const nameEl    = card.querySelector('.editor-name');
+  const statusEl  = card.querySelector('.editor-status');
+  const removeBtn = card.querySelector('.btn-remove');
+  const ta        = card.querySelector('.editor-ta');
   nameEl.value = initialName;
 
   const cm = CodeMirror.fromTextArea(ta, {
@@ -56,259 +51,229 @@ function createPanel(initialContent, initialName) {
     gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
     lineWrapping: false,
     tabSize: 2,
-    extraKeys: { 'Ctrl-Q': function(cm) { cm.foldCode(cm.getCursor()); } },
+    extraKeys: { 'Ctrl-Q': cm => cm.foldCode(cm.getCursor()) },
   });
-
   cm.setSize('100%', '260px');
-
   cm.setValue(initialContent);
-
-  cm.on('change', function() {
-    validateCm(cm, statusEl);
-    if (diffVisible) renderDiff();
-  });
-
-  nameEl.addEventListener('input', function() {
-    if (diffVisible) renderDiff();
-  });
-
+  cm.on('change', () => { validateCm(cm, statusEl); if (diffVisible) renderDiff(); });
+  nameEl.addEventListener('input', () => { if (diffVisible) renderDiff(); });
   validateCm(cm, statusEl);
 
-  removeBtn.addEventListener('click', function() {
+  removeBtn.addEventListener('click', () => {
     card.remove();
-    var i = panels.findIndex(function(p) { return p.id === id; });
+    const i = panels.findIndex(p => p.id === id);
     if (i !== -1) panels.splice(i, 1);
     if (diffVisible) renderDiff();
   });
 
   document.getElementById('editors-grid').appendChild(card);
-  panels.push({ id: id, nameEl: nameEl, cm: cm });
-  return id;
+  panels.push({ id, nameEl, cm });
 }
 
 function validateCm(cm, statusEl) {
   try {
-    var t = cm.getValue().trim();
+    const t = cm.getValue().trim();
     if (t) JSON.parse(t);
     statusEl.textContent = 'JSON ok';
     statusEl.className   = 'editor-status status-ok';
-  } catch(e) {
+  } catch {
     statusEl.textContent = 'błąd JSON';
     statusEl.className   = 'editor-status status-err';
   }
 }
 
-// ─── Deep N-way diff ──────────────────────────────────────────────────────────
-
-function collectPaths(val, prefix) {
-  prefix = prefix || '';
-  var out = new Map();
-
+// ─── flatten: val → Map<materialPath, serializedLeaf> ────────────────────────
+function flatten(val, prefix) {
+  if (prefix === undefined) prefix = '';
+  const out = new Map();
   if (val === null || typeof val !== 'object') {
     out.set(prefix, JSON.stringify(val));
     return out;
   }
-
   if (Array.isArray(val)) {
-    if (val.length === 0) {
-      out.set(prefix, '[]');
-    } else {
-      val.forEach(function(item, i) {
-        var next = prefix ? prefix + '[' + i + ']' : '[' + i + ']';
-        collectPaths(item, next).forEach(function(v, k) { out.set(k, v); });
-      });
-    }
+    if (val.length === 0) { out.set(prefix, '[]'); return out; }
+    val.forEach((item, i) => {
+      flatten(item, prefix ? `${prefix}[${i}]` : `[${i}]`)
+        .forEach((v, k) => out.set(k, v));
+    });
     return out;
   }
-
-  var keys = Object.keys(val);
-  if (keys.length === 0) {
-    out.set(prefix, '{}');
-    return out;
-  }
-  keys.forEach(function(k) {
-    var next = prefix ? prefix + '.' + k : k;
-    collectPaths(val[k], next).forEach(function(v, kk) { out.set(kk, v); });
+  const keys = Object.keys(val);
+  if (keys.length === 0) { out.set(prefix, '{}'); return out; }
+  keys.forEach(k => {
+    flatten(val[k], prefix ? `${prefix}.${k}` : k)
+      .forEach((v, kk) => out.set(kk, v));
   });
   return out;
 }
 
-function diffPaths(parsedArr) {
-  var maps = parsedArr.map(function(p) { return collectPaths(p); });
-  var allPaths = new Set();
-  maps.forEach(function(m) { m.forEach(function(_, k) { allPaths.add(k); }); });
-
-  var diffSet = new Set();
-  allPaths.forEach(function(path) {
-    var vals = maps.map(function(m) { return m.get(path); });
-    var first = vals[0];
-    if (vals.some(function(v) { return v !== first; })) diffSet.add(path);
+// ─── nwayDiff: N map → Set<path> które się różnią ────────────────────────────
+function nwayDiff(maps) {
+  const allPaths = new Set();
+  maps.forEach(m => m.forEach((_, k) => allPaths.add(k)));
+  const diffSet = new Set();
+  allPaths.forEach(path => {
+    const vals = maps.map(m => m.get(path));
+    if (vals.some(v => v !== vals[0])) diffSet.add(path);
   });
   return diffSet;
 }
 
-// ─── Annotated pretty-print ───────────────────────────────────────────────────
-// Returns [{ text, diffPaths: Set }] — one entry per line
-function annotateLines(val) {
-  var lines   = JSON.stringify(val, null, 2).split('\n');
-  var result  = [];
+// ─── prettyLines: val → [{ text, path }] ─────────────────────────────────────
+// Używamy JSON.stringify żeby linie były identyczne jak to co użytkownik widzi.
+// Ścieżkę odtwarzamy przez śledzenie stosu (path, indent, arrayIndex).
+// Stack entry: { path, type: 'obj'|'arr', idx: number }
+function prettyLines(val) {
+  const raw   = JSON.stringify(val, null, 2);
+  const lines = raw.split('\n');
 
-  // Stack-based path tracker
-  var pathStack = [];   // current key segments
-  var typeStack = [];   // 'obj' | 'arr'
-  var idxStack  = [];   // current array index
+  // stack[top] = bieżący kontener
+  const stack = [];
+  // Wynik
+  const result = [];
 
-  lines.forEach(function(line) {
-    var trimmed = line.trim();
-    var paths   = new Set();
+  // Pomocnik: bieżąca ścieżka bazy (kontener)
+  function parentPath() {
+    return stack.length ? stack[stack.length - 1].path : '';
+  }
 
-    // ── detect key ──
-    var keyMatch = trimmed.match(/^"([^"\\]*)"\s*:/);
+  lines.forEach(line => {
+    const trimmed  = line.trim();
+    const indent   = line.match(/^(\s*)/)[1].length;
+    const indentU  = indent / 2; // poziom wcięcia w jednostkach
+
+    // ── Zamknięcia ── zamykamy kontener jeśli wcięcie pasuje
+    // Zamknięcie: linia zaczyna się od } lub ]
+    if (/^[}\]]/.test(trimmed)) {
+      // ścieżka zamknięcia = ścieżka kontenera
+      const top = stack.length ? stack[stack.length - 1] : null;
+      result.push({ text: line, path: top ? top.path : '' });
+      stack.pop();
+      // Jeśli rodzic jest tablicą — inkrementuj idx
+      if (stack.length && stack[stack.length - 1].type === 'arr') {
+        stack[stack.length - 1].idx++;
+      }
+      return;
+    }
+
+    // ── Klucz: "key": value lub "key": { lub "key": [
+    const keyMatch = trimmed.match(/^"((?:[^"\\]|\\.)*)"\s*:/);
     if (keyMatch) {
-      pathStack.push(keyMatch[1]);
-    }
+      const key      = keyMatch[1];
+      const parent   = parentPath();
+      const fullPath = parent ? `${parent}.${key}` : key;
 
-    // ── build path ──
-    function buildPath() {
-      var p = '';
-      pathStack.forEach(function(seg) {
-        if (/^\[\d+\]$/.test(seg)) p += seg;
-        else p = p ? p + '.' + seg : seg;
-      });
-      return p;
-    }
+      const rest = trimmed.slice(keyMatch[0].length).trim().replace(/,$/, '');
 
-    var curPath = buildPath();
-    if (curPath) {
-      paths.add(curPath);
-      // add parent paths
-      var tmp = curPath;
-      while (tmp.includes('.') || /\[\d+\]/.test(tmp)) {
-        tmp = tmp.replace(/(\.[^.[]+|\[\d+\])$/, '');
-        if (tmp) paths.add(tmp);
+      if (rest === '{') {
+        result.push({ text: line, path: fullPath });
+        stack.push({ path: fullPath, type: 'obj', idx: 0 });
+      } else if (rest === '[') {
+        result.push({ text: line, path: fullPath });
+        stack.push({ path: fullPath, type: 'arr', idx: 0 });
+      } else {
+        // liść — ścieżka to fullPath
+        result.push({ text: line, path: fullPath });
       }
+      return;
     }
 
-    // ── structural tokens ──
-    var isOpenObj = /\{,?$/.test(trimmed) && !keyMatch;
-    var isOpenArr = /\[,?$/.test(trimmed);
-    var isCloseObj = /^\}/.test(trimmed);
-    var isCloseArr = /^\]/.test(trimmed);
+    // ── Element tablicy (bez klucza)
+    if (stack.length && stack[stack.length - 1].type === 'arr') {
+      const top      = stack[stack.length - 1];
+      const fullPath = `${top.path}[${top.idx}]`;
 
-    // open after key
-    if (keyMatch && /\{,?$/.test(trimmed)) {
-      typeStack.push('obj'); idxStack.push(0);
-    } else if (keyMatch && /\[,?$/.test(trimmed)) {
-      typeStack.push('arr'); idxStack.push(0);
-    } else if (!keyMatch && /^\{/.test(trimmed)) {
-      typeStack.push('obj'); idxStack.push(0);
-    } else if (!keyMatch && /^\[/.test(trimmed) && !isCloseArr) {
-      typeStack.push('arr'); idxStack.push(0);
+      const rest = trimmed.replace(/,$/, '');
+      if (rest === '{') {
+        result.push({ text: line, path: fullPath });
+        stack.push({ path: fullPath, type: 'obj', idx: 0 });
+      } else if (rest === '[') {
+        result.push({ text: line, path: fullPath });
+        stack.push({ path: fullPath, type: 'arr', idx: 0 });
+      } else {
+        result.push({ text: line, path: fullPath });
+        top.idx++;
+      }
+      return;
     }
 
-    if (isCloseObj || isCloseArr) {
-      typeStack.pop(); idxStack.pop();
-      if (pathStack.length) pathStack.pop();
-      // advance array index if parent is array
-      if (typeStack.length && typeStack[typeStack.length - 1] === 'arr') {
-        idxStack[idxStack.length - 1]++;
-        pathStack[pathStack.length - 1] = '[' + idxStack[idxStack.length - 1] + ']';
-      }
-    } else if (keyMatch) {
-      // leaf value: pop key after recording
-      var isLeaf = !/[\{\[]$/.test(trimmed);
-      if (isLeaf) {
-        pathStack.pop();
-        if (typeStack.length && typeStack[typeStack.length - 1] === 'arr') {
-          idxStack[idxStack.length - 1]++;
-          if (pathStack.length) pathStack[pathStack.length - 1] = '[' + idxStack[idxStack.length - 1] + ']';
-        }
-      }
-    } else if (!isCloseObj && !isCloseArr && typeStack.length && typeStack[typeStack.length - 1] === 'arr') {
-      // array element (no key)
-      var isLeafArr = !/[\{\[]$/.test(trimmed);
-      if (isLeafArr && trimmed !== '') {
-        idxStack[idxStack.length - 1]++;
-        if (pathStack.length) pathStack[pathStack.length - 1] = '[' + idxStack[idxStack.length - 1] + ']';
-      }
+    // ── Otwarcie root { lub [
+    if (trimmed === '{') {
+      result.push({ text: line, path: '' });
+      stack.push({ path: '', type: 'obj', idx: 0 });
+      return;
+    }
+    if (trimmed === '[') {
+      result.push({ text: line, path: '' });
+      stack.push({ path: '', type: 'arr', idx: 0 });
+      return;
     }
 
-    result.push({ text: line, linePaths: paths });
+    // Fallback
+    result.push({ text: line, path: parentPath() });
   });
 
   return result;
 }
 
-// ─── Diff render ──────────────────────────────────────────────────────────────
+// ─── Render diff ──────────────────────────────────────────────────────────────
 function renderDiff() {
-  var container = document.getElementById('diff-columns');
+  const container = document.getElementById('diff-columns');
   container.innerHTML = '';
 
-  var parsed = panels.map(function(p) {
-    try { return JSON.parse(p.cm.getValue()); } catch(e) { return null; }
+  const parsed = panels.map(p => {
+    try { return JSON.parse(p.cm.getValue()); } catch { return null; }
   });
 
-  var validParsed = parsed.filter(function(p) { return p !== null; });
-  var diffSet = validParsed.length >= 2 ? diffPaths(validParsed) : new Set();
+  const validParsed = parsed.filter(p => p !== null);
+  const flatMaps    = validParsed.map(p => flatten(p));
+  const diffSet     = flatMaps.length >= 2 ? nwayDiff(flatMaps) : new Set();
+  const onlyDiff    = document.getElementById('chk-only-diff').checked;
+  const errCount    = parsed.filter(p => p === null).length;
 
-  var onlyDiff = document.getElementById('chk-only-diff').checked;
+  document.getElementById('diff-stats').textContent =
+    `${diffSet.size} różnych ścieżek` +
+    (errCount ? ` · ${errCount} panel(i) z błędem JSON` : '');
 
-  var statsEl = document.getElementById('diff-stats');
-  var errCount = parsed.filter(function(p) { return p === null; }).length;
-  statsEl.textContent = diffSet.size + ' różnych ścieżek' +
-    (errCount ? ' · ' + errCount + ' panel(i) z błędem JSON' : '');
+  panels.forEach((panel, pi) => {
+    const col = document.createElement('div');
+    col.className  = 'diff-col';
+    col.style.flex     = `0 0 ${colWidthPct}%`;
+    col.style.minWidth = '220px';
 
-  panels.forEach(function(panel, pi) {
-    var col = document.createElement('div');
-    col.className   = 'diff-col';
-    col.style.flex      = '0 0 ' + colWidthPct + '%';
-    col.style.minWidth  = '220px';
-
-    var header = document.createElement('div');
+    const header = document.createElement('div');
     header.className   = 'diff-col-header';
-    header.textContent = panel.nameEl.value || ('JSON ' + (pi + 1));
+    header.textContent = panel.nameEl.value || `JSON ${pi + 1}`;
     col.appendChild(header);
 
-    var body = document.createElement('div');
-    body.className     = 'diff-body';
-    body.dataset.colIdx = String(pi);
+    const body = document.createElement('div');
+    body.className = 'diff-body';
 
-    var p = parsed[pi];
+    const p = parsed[pi];
     if (p === null) {
-      var err = document.createElement('div');
-      err.style.cssText = 'padding:12px;color:var(--rem-text);font-family:var(--font-sans);font-size:12px';
+      const err = document.createElement('div');
+      err.style.cssText = 'padding:12px;color:var(--rem-text);font-size:12px';
       err.textContent = 'Błąd parsowania JSON';
       body.appendChild(err);
     } else {
-      var annotated = annotateLines(p);
-      var lineNum = 1;
+      const pLines = prettyLines(p);
+      pLines.forEach(({ text, path }, li) => {
+        // Linia diff: TYLKO jeśli path jest bezpośrednio w diffSet
+        // (liść który się różni) — bez kolorowania kontenerów/przodków
+        const diff = diffSet.has(path);
+        if (onlyDiff && !diff) return;
 
-      annotated.forEach(function(item) {
-        var isDiff = false;
-        item.linePaths.forEach(function(path) {
-          if (diffSet.has(path)) isDiff = true;
-        });
+        const row = document.createElement('div');
+        row.className = `diff-line ${diff ? 'line-changed' : 'line-same'}`;
+        if (diff) row.title = path;
 
-        if (onlyDiff && !isDiff) { lineNum++; return; }
-
-        var row = document.createElement('div');
-        row.className = 'diff-line ' + (isDiff ? 'line-changed' : 'line-same');
-
-        if (isDiff) {
-          var diffHere = [];
-          item.linePaths.forEach(function(path) {
-            if (diffSet.has(path)) diffHere.push(path);
-          });
-          row.title = diffHere.join('\n');
-        }
-
-        var numEl = document.createElement('div');
+        const numEl = document.createElement('div');
         numEl.className   = 'line-num';
-        numEl.textContent = String(lineNum++);
+        numEl.textContent = String(li + 1);
 
-        var contentEl = document.createElement('div');
+        const contentEl = document.createElement('div');
         contentEl.className   = 'line-content';
-        contentEl.textContent = item.text;
+        contentEl.textContent = text;
 
         row.appendChild(numEl);
         row.appendChild(contentEl);
@@ -324,83 +289,67 @@ function renderDiff() {
 }
 
 function setupSyncScroll() {
-  var bodies = document.querySelectorAll('.diff-body');
-  var syncing = false;
-  bodies.forEach(function(b) {
-    b.addEventListener('scroll', function() {
+  const bodies = document.querySelectorAll('.diff-body');
+  let syncing = false;
+  bodies.forEach(b => {
+    b.addEventListener('scroll', () => {
       if (syncing) return;
       syncing = true;
-      bodies.forEach(function(other) {
-        if (other !== b) { other.scrollTop = b.scrollTop; other.scrollLeft = b.scrollLeft; }
+      bodies.forEach(o => {
+        if (o !== b) { o.scrollTop = b.scrollTop; o.scrollLeft = b.scrollLeft; }
       });
       syncing = false;
     });
   });
 }
 
-// ─── Width ────────────────────────────────────────────────────────────────────
 function applyWidth(pct) {
   colWidthPct = pct;
-  document.querySelectorAll('.editor-card').forEach(function(el) {
-    el.style.flex = '0 0 ' + pct + '%';
-  });
-  document.querySelectorAll('#diff-columns .diff-col').forEach(function(el) {
-    el.style.flex = '0 0 ' + pct + '%';
-  });
+  document.querySelectorAll('.editor-card').forEach(
+    el => { el.style.flex = `0 0 ${pct}%`; }
+  );
+  document.querySelectorAll('#diff-columns .diff-col').forEach(
+    el => { el.style.flex = `0 0 ${pct}%`; }
+  );
 }
 
-// ─── Save / load ──────────────────────────────────────────────────────────────
 async function saveToCloud() {
-  if (!supabase) {
-    showToast('Brak konfiguracji Supabase — uzupełnij SUPABASE_URL i SUPABASE_KEY w app.js');
-    return;
-  }
-  var btn = document.getElementById('btn-save');
-  btn.disabled = true;
-  btn.textContent = 'Zapisuję…';
-
-  var data = panels.map(function(p) {
-    return { name: p.nameEl.value, content: p.cm.getValue() };
-  });
-
-  var result = await supabase.from('json_diffs').insert([{ data: data }]).select('id');
-  btn.disabled = false;
-  btn.textContent = 'Zapisz i udostępnij';
-
-  if (result.error) { showToast('Błąd zapisu: ' + result.error.message); return; }
-
-  var url = location.origin + location.pathname + '?v=' + result.data[0].id;
+  if (!supabase) { showToast('Brak konfiguracji Supabase'); return; }
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true; btn.textContent = 'Zapisuję…';
+  const data = panels.map(p => ({ name: p.nameEl.value, content: p.cm.getValue() }));
+  const { data: rows, error } = await supabase
+    .from('json_diffs').insert([{ data }]).select('id');
+  btn.disabled = false; btn.textContent = 'Zapisz i udostępnij';
+  if (error) { showToast('Błąd: ' + error.message); return; }
+  const url = `${location.origin}${location.pathname}?v=${rows[0].id}`;
   history.pushState({}, '', url);
-  navigator.clipboard.writeText(url).catch(function() {});
-  showToast('Link skopiowany do schowka!');
+  navigator.clipboard.writeText(url).catch(() => {});
+  showToast('Link skopiowany!');
 }
 
 async function loadFromCloud(id) {
   if (!supabase) return;
-  var result = await supabase.from('json_diffs').select('data').eq('id', id).single();
-  if (result.error || !result.data) { showToast('Nie znaleziono danych'); return; }
+  const { data, error } = await supabase
+    .from('json_diffs').select('data').eq('id', id).single();
+  if (error || !data) { showToast('Nie znaleziono'); return; }
   document.getElementById('editors-grid').innerHTML = '';
   panels.splice(0);
-  result.data.data.forEach(function(item) { createPanel(item.content, item.name); });
+  data.data.forEach(item => createPanel(item.content, item.name));
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-var toastTimer;
+let toastTimer;
 function showToast(msg) {
-  var el = document.getElementById('toast');
+  const el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(function() { el.classList.add('hidden'); }, 3500);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 3500);
 }
 
-// ─── Boot ─────────────────────────────────────────────────────────────────────
 async function main() {
   supabase = await initSupabase();
-
-  var params = new URLSearchParams(location.search);
-  var vid    = params.get('v');
-
+  const vid = new URLSearchParams(location.search).get('v');
   if (vid && supabase) {
     await loadFromCloud(vid);
   } else {
@@ -408,32 +357,28 @@ async function main() {
     createPanel('', 'JSON B');
   }
 
-  document.getElementById('btn-add').addEventListener('click', function() {
-    var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    createPanel('', 'JSON ' + (letters[panels.length] || panels.length + 1));
+  document.getElementById('btn-add').addEventListener('click', () => {
+    const l = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    createPanel('', 'JSON ' + (l[panels.length] || panels.length + 1));
   });
-
-  document.getElementById('btn-compare').addEventListener('click', function() {
+  document.getElementById('btn-compare').addEventListener('click', () => {
     document.getElementById('diff-section').classList.remove('hidden');
     diffVisible = true;
     renderDiff();
   });
-
-  document.getElementById('btn-close-diff').addEventListener('click', function() {
+  document.getElementById('btn-close-diff').addEventListener('click', () => {
     document.getElementById('diff-section').classList.add('hidden');
     diffVisible = false;
   });
-
   document.getElementById('btn-save').addEventListener('click', saveToCloud);
-
-  document.getElementById('chk-only-diff').addEventListener('change', function() {
+  document.getElementById('chk-only-diff').addEventListener('change', () => {
     if (diffVisible) renderDiff();
   });
 
-  var slider   = document.getElementById('width-slider');
-  var widthOut = document.getElementById('width-out');
-  slider.addEventListener('input', function() {
-    var v = Number(slider.value);
+  const slider   = document.getElementById('width-slider');
+  const widthOut = document.getElementById('width-out');
+  slider.addEventListener('input', () => {
+    const v = Number(slider.value);
     widthOut.textContent = v + '%';
     applyWidth(v);
     if (diffVisible) renderDiff();
